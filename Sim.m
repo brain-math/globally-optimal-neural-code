@@ -220,8 +220,7 @@ delete(h)
 
 ceMismatch = zeros(1, nRepeat); h = waitbar(0);
 for iRepeat = 1 : nRepeat
-    W1 = randn(N) * g / sqrt(N); W2 = randn(N) * g / sqrt(N);
-    [y01, a1, b1] = adjustrhow(rho, W1, W2, y0, a, b);
+    [y01, a1, b1, W1, W2] = genmismatchpair(rho, g, N, y0, a, b);
     rFun = @(x) wtor(x, y01, a1, b1, W1);
     ceMismatch(iRepeat) = mean(getnmcw(rFun, W2, nPair, dTheta, nSample));
     waitbar(iRepeat/nRepeat, h)
@@ -407,7 +406,9 @@ r = sqrtr.^2;
 end
 
 function [y0, a, b, k, feval, exitflag, output] = adjustrhow(rho, Wr, Wx, y0, a, b)
-options = optimoptions('fsolve', 'Display', 'off');
+% Typically only less than 5 iterations and 10 function evaluations are 
+% needed to converge if the W's are not degenerate is some way
+options = optimoptions('fsolve', 'Display', 'off', 'MaxIterations', 5, 'MaxFunctionEvaluations', 10);
 [k, feval, exitflag, output] = fsolve(@(x) integral(@(t) sqrtfiw(t, x, y0, a, b, Wr, Wx), 0, 2*pi, 'ArrayValued', true)-2*pi*rho, 1, options);
 a = a * k; b = b * k;
 end
@@ -418,4 +419,14 @@ y = y0+x*(a*cos(t)+b*sin(t)); dy = x*(-a*sin(t)+b*cos(t));
 sqrtr = fsolve(@(z) fyr(z, y, Wr), abs(y)/2, options);
 Linv = diag(1./sqrtr); A = Linv - Wx; B = Linv - Wr;
 l = norm(A*(B\dy));
+end
+
+function [y01, a1, b1, W1, W2] = genmismatchpair(rho, g, N, y0, a, b)
+    exitflag = 0; t = 0; T = 30;
+    % Random generation of W1 and W2 sometimes produce degenerate samples
+    while exitflag < 0.5 && t < T 
+        W1 = randn(N) * g / sqrt(N); W2 = randn(N) * g / sqrt(N);
+        [y01, a1, b1, ~, ~, exitflag] = adjustrhow(rho, W1, W2, y0, a, b);
+        t = t + 1;
+    end
 end

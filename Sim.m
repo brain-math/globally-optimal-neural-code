@@ -28,14 +28,14 @@ for ik = 1 : nk
     b = S / ellipticE(m); % Calculate width of ellipse with length 4S
     a = b / k; % Height
     
-    % % Monte Carlo for mutual information (takes some time to run)
-    % Theta = rand(nt, 1) * 2 * pi;
-    % T = arrayfun(@(x) altot(x, m), Theta);
-    % Rx = a*cos(T); Ry = b*sin(T);
-    % X = randn(nt, nx) + Rx;
-    % Y = randn(nt, nx) + Ry;
-    % x = X(:); y = Y(:); 
-    % MI(ik) = -mean(log(mean(exp(-((x-Rx').^2 + (y-Ry').^2)/2), 2))) - 1;
+    % Monte Carlo for mutual information
+    Theta = rand(nt, 1) * 2 * pi;
+    T = arrayfun(@(x) altot(x, m), Theta);
+    Rx = a*cos(T); Ry = b*sin(T);
+    X = randn(nt, nx) + Rx;
+    Y = randn(nt, nx) + Ry;
+    x = X(:); y = Y(:); 
+    MI(ik) = -mean(log(mean(exp(-((x-Rx').^2 + (y-Ry').^2)/2), 2))) - 1;
 
     % Neurometric curve (theoretical)
     for idTheta = 1 : ndThetaT
@@ -206,7 +206,7 @@ figure; imagesc(cErrorNorm); colormap sky; axis equal
 colorbar('southoutside', 'Ticks', 1:6, 'TickLabels', {'1', '2', '3', '4', '5', '6'})
 
 %% Linearized recurrent network performance (Fig. 6c)
-N = 100; g = 1; rho = 3.5; beta = 4; [y0, a, b] = gencirc(N, beta, rho);
+N = 100; g = 0.9; rho = 3.5; beta = 3; [y0, a, b] = gencirc(N, beta, rho);
 dTheta = pi/2; nPair = 30; nSample = 1e3; nRepeat = 100;
 
 ceMatch = zeros(1, nRepeat); h = waitbar(0);
@@ -218,10 +218,10 @@ for iRepeat = 1 : nRepeat
 end
 delete(h)
 
-ceMismatch = zeros(1, nRepeat); K = zeros(1, nRepeat); h = waitbar(0);
-for iRepeat = 84 : nRepeat
+ceMismatch = zeros(1, nRepeat); h = waitbar(0);
+for iRepeat = 1 : nRepeat
     W1 = randn(N) * g / sqrt(N); W2 = randn(N) * g / sqrt(N);
-    [y01, a1, b1, k] = adjustrhow(rho, W1, W2, y0, a, b); K(iRepeat) = k;
+    [y01, a1, b1] = adjustrhow(rho, W1, W2, y0, a, b);
     rFun = @(x) wtor(x, y01, a1, b1, W1);
     ceMismatch(iRepeat) = mean(getnmcw(rFun, W2, nPair, dTheta, nSample));
     waitbar(iRepeat/nRepeat, h)
@@ -235,7 +235,7 @@ legend('Matched', 'Mismatched')
 
 %% Constraining the population firing rate (Fig. 7)
 rho = 5; % Use r to control classification error magnitude
-l0 = rho * 2 / sqrt(3); % Length constraint (divided by 2*pi). -1 if no constraint
+l0 = rho / sqrt(3); % LPC
 N = 100; % Number of neurons, which is 1 dimension larger than the sphere
 K = 10; % Largest Fourier mode
 T = 100; theta = linspace(0, 2*pi, T+1); theta = theta(2:end)';
@@ -245,13 +245,14 @@ B = [ones(T, 1), cos(theta*(1:K)), sin(theta*(1:K))]; % Fourier bases
 Phi0 = randn(2*K+1, N);
 Y0 = B * Phi0; Rho0 = sum(Y0.^2, 2); Phi0 = Phi0 / sqrt(mean(Rho0));
 
-options = optimoptions('fmincon', 'MaxFunctionEvaluations', 1e8,...
-    'MaxIterations', 1e5, 'PlotFcn', 'optimplotfvalconstr', 'Display', 'off');
-[Phi, L] = fmincon(@(x) perrors(x, B), Phi0, [], [], [], [], [], [], @(x) lconsm(x, B, rho, l0), options);
+options = optimoptions('fmincon', 'MaxFunctionEvaluations', 1e7,...
+    'MaxIterations', 1e4, 'PlotFcn', 'optimplotfvalconstr', 'Display', 'off');
+Phi2 = fmincon(@(x) perrors(x, B), Phi0, [], [], [], [], [], [], @(x) lconsm(x, B, rho, 2*l0), options);
+Phi4 = fmincon(@(x) perrors(x, B), Phi0, [], [], [], [], [], [], @(x) lconsm(x, B, rho, 4*l0), options);
+Phi = fmincon(@(x) perrors(x, B), Phi0, [], [], [], [], [], [], @(x) lconsm(x, B, rho, -1), options);
 
 % Neurometric curve
 dThetaAll = 0 : 0.01 : (pi/2);
-cError0 = gettnmc(Phi0, dThetaAll);
 cError2 = gettnmc(Phi2, dThetaAll);
 cError4 = gettnmc(Phi4, dThetaAll);
 cError = gettnmc(Phi, dThetaAll);
@@ -259,7 +260,7 @@ cError = gettnmc(Phi, dThetaAll);
 figure; plot(dThetaAll, hfun(2/sqrt(3)*rho*sin(dThetaAll/2))); hold on
 plot(dThetaAll, cError2); plot(dThetaAll, cError4); plot(dThetaAll, cError)
 legend('Largest positive circle (LPC)', 'Length = 2 x LPC',...
-    'Length = 4 x GC', 'Length unconstrained')
+    'Length = 4 x LPC', 'Length unconstrained')
 xlabel('\theta'); ylabel('Classification error')
 
 %% The effect of sign ambiguity (Fig. S1)
